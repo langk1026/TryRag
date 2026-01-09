@@ -1,0 +1,98 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: rag-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - SHAREPOINT_SITE_URL=${SHAREPOINT_SITE_URL}
+      - SHAREPOINT_CLIENT_ID=${SHAREPOINT_CLIENT_ID}
+      - SHAREPOINT_CLIENT_SECRET=${SHAREPOINT_CLIENT_SECRET}
+      - SHAREPOINT_TENANT_ID=${SHAREPOINT_TENANT_ID}
+      - SHAREPOINT_DOCUMENT_LIBRARY=${SHAREPOINT_DOCUMENT_LIBRARY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-text-embedding-3-small}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4-turbo-preview}
+      - VECTOR_DB_PATH=/app/data/chromadb
+      - COLLECTION_NAME=${COLLECTION_NAME:-sharepoint_documents}
+      - INDEX_SCHEDULE_MINUTES=${INDEX_SCHEDULE_MINUTES:-30}
+      - BATCH_SIZE=${BATCH_SIZE:-10}
+      - CHUNK_SIZE=${CHUNK_SIZE:-1000}
+      - CHUNK_OVERLAP=${CHUNK_OVERLAP:-200}
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - CORS_ORIGINS=http://localhost:3000,http://localhost
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FILE=/app/logs/app.log
+      - HYDE_ENABLED=${HYDE_ENABLED:-true}
+    volumes:
+      - vector-data:/app/data
+      - backend-logs:/app/logs
+    networks:
+      - rag-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/api/v1/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  cron:
+    build:
+      context: .
+      dockerfile: Dockerfile.cron
+    container_name: rag-cron
+    environment:
+      - SHAREPOINT_SITE_URL=${SHAREPOINT_SITE_URL}
+      - SHAREPOINT_CLIENT_ID=${SHAREPOINT_CLIENT_ID}
+      - SHAREPOINT_CLIENT_SECRET=${SHAREPOINT_CLIENT_SECRET}
+      - SHAREPOINT_TENANT_ID=${SHAREPOINT_TENANT_ID}
+      - SHAREPOINT_DOCUMENT_LIBRARY=${SHAREPOINT_DOCUMENT_LIBRARY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-text-embedding-3-small}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4-turbo-preview}
+      - VECTOR_DB_PATH=/app/data/chromadb
+      - COLLECTION_NAME=${COLLECTION_NAME:-sharepoint_documents}
+      - INDEX_SCHEDULE_MINUTES=${INDEX_SCHEDULE_MINUTES:-30}
+      - BATCH_SIZE=${BATCH_SIZE:-10}
+      - CHUNK_SIZE=${CHUNK_SIZE:-1000}
+      - CHUNK_OVERLAP=${CHUNK_OVERLAP:-200}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FILE=/app/logs/cron.log
+    volumes:
+      - vector-data:/app/data
+      - cron-logs:/app/logs
+    networks:
+      - rag-network
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: rag-frontend
+    ports:
+      - "3000:80"
+    networks:
+      - rag-network
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  vector-data:
+    driver: local
+  backend-logs:
+    driver: local
+  cron-logs:
+    driver: local
+
+networks:
+  rag-network:
+    driver: bridge
