@@ -10,9 +10,9 @@ class Config:
         self.sharepoint_tenant_id = os.getenv('SHAREPOINT_TENANT_ID', '')
         self.sharepoint_document_library = os.getenv('SHAREPOINT_DOCUMENT_LIBRARY', 'Shared Documents')
 
-        self.openai_api_key = os.getenv('OPENAI_API_KEY', '')
-        self.embedding_model = os.getenv('EMBEDDING_MODEL', 'text-embedding-3-small')
-        self.llm_model = os.getenv('LLM_MODEL', 'gpt-4-turbo-preview')
+        self.google_api_key = os.getenv('GOOGLE_API_KEY', '')
+        self.embedding_model = os.getenv('EMBEDDING_MODEL', 'models/text-embedding-004')
+        self.llm_model = os.getenv('LLM_MODEL', 'gemini-2.0-flash-exp')
 
         self.vector_db_path = os.getenv('VECTOR_DB_PATH', './data/chromadb')
         self.collection_name = os.getenv('COLLECTION_NAME', 'sharepoint_documents')

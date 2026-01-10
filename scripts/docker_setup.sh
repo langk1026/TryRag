@@ -32,14 +32,14 @@ if [ ! -f .env ]; then
     echo "   - SHAREPOINT_CLIENT_ID"
     echo "   - SHAREPOINT_CLIENT_SECRET"
     echo "   - SHAREPOINT_TENANT_ID"
-    echo "   - OPENAI_API_KEY"
+    echo "   - GOOGLE_API_KEY"
     echo ""
     read -p "Press Enter after configuring .env file..."
 fi
 
 echo "Checking .env configuration..."
 
-if grep -q "your_client_id" .env || grep -q "your_openai_api_key" .env; then
+if grep -q "your_client_id" .env || grep -q "your_google_api_key" .env; then
     echo "❌ Error: .env file contains placeholder values"
     echo "Please configure .env with actual credentials"
     exit 1

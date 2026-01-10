@@ -19,7 +19,7 @@ def check_environment():
         'SHAREPOINT_SITE_URL',
         'SHAREPOINT_CLIENT_ID',
         'SHAREPOINT_CLIENT_SECRET',
-        'OPENAI_API_KEY'
+        'GOOGLE_API_KEY'
     ]
 
     missing_vars = []

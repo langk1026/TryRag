@@ -1,4 +1,4 @@
-import openai
+import google.generativeai as genai
 from backend.core.embeddings import EmbeddingService
 from backend.services.vector_store import VectorStore
 from backend.core.logger import setup_logger
@@ -9,11 +9,12 @@ logger = setup_logger(__name__)
 
 class RAGEngine:
     def __init__(self):
-        openai.api_key = config.openai_api_key
+        genai.configure(api_key=config.google_api_key)
         self.embedding_service = EmbeddingService()
         self.vector_store = VectorStore()
         self.llm_model = config.llm_model
         self.hyde_enabled = config.hyde_enabled
+        self.model = genai.GenerativeModel(self.llm_model)
 
     def query(self, user_question, top_k=5, temperature=0.7):
         logger.info(f"Processing RAG query: {user_question[:100]}...")
@@ -64,24 +65,26 @@ class RAGEngine:
             raise
 
     def _generate_hypothetical_answer(self, question):
-        hyde_prompt = f"""Given the following question, generate a detailed, hypothetical answer as if you had access to the relevant documents. This answer will be used to find similar content in a document database.
+        hyde_prompt = f"""You are an expert at generating hypothetical answers for document retrieval.
+
+Given the following question, generate a detailed, hypothetical answer as if you had access to the relevant documents. This answer will be used to find similar content in a document database.
 
 Question: {question}
 
 Generate a comprehensive hypothetical answer (2-3 paragraphs):"""
 
         try:
-            response = openai.chat.completions.create(
-                model=self.llm_model,
-                messages=[
-                    {"role": "system", "content": "You are an expert at generating hypothetical answers for document retrieval."},
-                    {"role": "user", "content": hyde_prompt}
-                ],
+            generation_config = genai.types.GenerationConfig(
                 temperature=config.hyde_temperature,
-                max_tokens=config.hyde_max_tokens
+                max_output_tokens=config.hyde_max_tokens
             )
 
-            hypothetical_answer = response.choices[0].message.content
+            response = self.model.generate_content(
+                hyde_prompt,
+                generation_config=generation_config
+            )
+
+            hypothetical_answer = response.text
 
             logger.debug(f"Generated hypothetical answer ({len(hypothetical_answer)} characters)")
             return hypothetical_answer
@@ -109,16 +112,16 @@ Generate a comprehensive hypothetical answer (2-3 paragraphs):"""
         return context
 
     def _generate_llm_response(self, question, context, temperature):
-        system_prompt = """You are a helpful assistant that answers questions based on the provided context from SharePoint documents.
+        prompt = f"""You are a helpful assistant that answers questions based on the provided context from SharePoint documents.
 
 Instructions:
 - Answer the question using ONLY the information from the provided context
 - If the context doesn't contain enough information, say so clearly
 - Cite the document names when referencing specific information
 - Be concise but thorough
-- If you're unsure, acknowledge the uncertainty"""
+- If you're unsure, acknowledge the uncertainty
 
-        user_prompt = f"""Context from documents:
+Context from documents:
 {context}
 
 Question: {question}
@@ -126,17 +129,17 @@ Question: {question}
 Please provide a clear and accurate answer based on the context above."""
 
         try:
-            response = openai.chat.completions.create(
-                model=self.llm_model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
+            generation_config = genai.types.GenerationConfig(
                 temperature=temperature,
-                max_tokens=1000
+                max_output_tokens=1000
             )
 
-            answer = response.choices[0].message.content
+            response = self.model.generate_content(
+                prompt,
+                generation_config=generation_config
+            )
+
+            answer = response.text
 
             logger.debug(f"Generated LLM response ({len(answer)} characters)")
             return answer

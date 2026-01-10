@@ -1,4 +1,4 @@
-import openai
+import google.generativeai as genai
 from backend.core.logger import setup_logger
 from backend.core.config import config
 
@@ -7,7 +7,7 @@ logger = setup_logger(__name__)
 
 class EmbeddingService:
     def __init__(self):
-        openai.api_key = config.openai_api_key
+        genai.configure(api_key=config.google_api_key)
         self.model = config.embedding_model
         self.batch_size = config.batch_size
 
@@ -23,12 +23,15 @@ class EmbeddingService:
             try:
                 logger.debug(f"Generating embeddings for batch {i//self.batch_size + 1} ({len(batch)} texts)")
 
-                response = openai.embeddings.create(
-                    model=self.model,
-                    input=batch
-                )
+                batch_embeddings = []
+                for text in batch:
+                    result = genai.embed_content(
+                        model=self.model,
+                        content=text,
+                        task_type="retrieval_document"
+                    )
+                    batch_embeddings.append(result['embedding'])
 
-                batch_embeddings = [item.embedding for item in response.data]
                 all_embeddings.extend(batch_embeddings)
 
                 logger.debug(f"Generated {len(batch_embeddings)} embeddings")
@@ -41,5 +44,13 @@ class EmbeddingService:
         return all_embeddings
 
     def generate_single_embedding(self, text):
-        embeddings = self.generate_embeddings([text])
-        return embeddings[0] if embeddings else None
+        try:
+            result = genai.embed_content(
+                model=self.model,
+                content=text,
+                task_type="retrieval_query"
+            )
+            return result['embedding']
+        except Exception as e:
+            logger.error(f"Failed to generate single embedding: {str(e)}")
+            raise
