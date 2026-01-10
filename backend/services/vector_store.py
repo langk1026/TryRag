@@ -48,8 +48,13 @@ class VectorStore:
                 metadata['indexed_at'] = datetime.utcnow().isoformat()
                 metadata['chunk_index'] = str(metadata['chunk_index'])
                 metadata['chunk_size'] = str(metadata['chunk_size'])
-                metadata['start_char'] = str(metadata['start_char'])
-                metadata['end_char'] = str(metadata['end_char'])
+                
+                # Optional fields
+                if 'start_char' in metadata:
+                    metadata['start_char'] = str(metadata['start_char'])
+                if 'end_char' in metadata:
+                    metadata['end_char'] = str(metadata['end_char'])
+                    
                 metadatas.append(metadata)
 
             self.collection.add(
@@ -76,13 +81,24 @@ class VectorStore:
             )
 
             retrieved_docs = []
-            if results['ids'] and len(results['ids']) > 0:
-                for i in range(len(results['ids'][0])):
+            if results and results.get('ids') and len(results['ids']) > 0:
+                # Ensure we have data for all required fields to avoid index errors
+                ids = results['ids'][0] if results['ids'] else []
+                documents = results['documents'][0] if results.get('documents') else []
+                metadatas = results['metadatas'][0] if results.get('metadatas') else []
+                distances = results['distances'][0] if results.get('distances') else []
+                
+                # The length of these lists should match, but let's be safe and take the minimum length
+                count = len(ids)
+                if documents: count = min(count, len(documents))
+                if metadatas: count = min(count, len(metadatas))
+                
+                for i in range(count):
                     doc = {
-                        'id': results['ids'][0][i],
-                        'text': results['documents'][0][i],
-                        'metadata': results['metadatas'][0][i],
-                        'distance': results['distances'][0][i] if 'distances' in results else None
+                        'id': ids[i],
+                        'text': documents[i] if documents else "",
+                        'metadata': metadatas[i] if metadatas else {},
+                        'distance': distances[i] if distances and i < len(distances) else 0.0
                     }
                     retrieved_docs.append(doc)
 
@@ -111,6 +127,24 @@ class VectorStore:
         except Exception as e:
             logger.error(f"Failed to get document count: {str(e)}")
             return 0
+
+    def get_all_document_ids(self):
+        try:
+            results = self.collection.get(
+                include=['metadatas']
+            )
+
+            document_ids = set()
+            if results['metadatas']:
+                for metadata in results['metadatas']:
+                    if 'document_id' in metadata:
+                        document_ids.add(metadata['document_id'])
+
+            logger.debug(f"Found {len(document_ids)} unique documents in vector store")
+            return list(document_ids)
+        except Exception as e:
+            logger.error(f"Failed to get document IDs: {str(e)}")
+            return []
 
     def clear_collection(self):
         try:

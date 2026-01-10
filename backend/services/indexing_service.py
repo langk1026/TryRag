@@ -61,6 +61,8 @@ class IndexingService:
                 logger.info("No previous index found, performing full reindex")
                 return self.full_reindex()
 
+            deleted_count = self._cleanup_deleted_documents()
+
             logger.info(f"Fetching documents modified since {last_indexed}")
             modified_docs = self.sharepoint.get_documents_modified_since(last_indexed)
 
@@ -70,6 +72,7 @@ class IndexingService:
                     'status': 'completed',
                     'documents_processed': 0,
                     'chunks_created': 0,
+                    'documents_deleted': deleted_count,
                     'errors': []
                 }
 
@@ -79,17 +82,49 @@ class IndexingService:
                 self.vector_store.delete_document(doc['id'])
 
             results = self._process_documents(modified_docs)
+            results['documents_deleted'] = deleted_count
 
             self.index_state.update_last_indexed_time(datetime.now(timezone.utc))
 
             logger.info(f"Incremental index completed: {results['documents_processed']} documents, "
-                       f"{results['chunks_created']} chunks")
+                       f"{results['chunks_created']} chunks, {deleted_count} deleted")
 
             return results
 
         except Exception as e:
             logger.error(f"Incremental index failed: {str(e)}")
             raise
+
+    def _cleanup_deleted_documents(self):
+        try:
+            logger.info("Checking for deleted documents in SharePoint")
+
+            current_docs = self.sharepoint.get_all_documents()
+            current_doc_ids = {doc['id'] for doc in current_docs}
+
+            indexed_doc_ids = set(self.vector_store.get_all_document_ids())
+
+            deleted_doc_ids = indexed_doc_ids - current_doc_ids
+
+            if not deleted_doc_ids:
+                logger.info("No deleted documents found")
+                return 0
+
+            logger.info(f"Found {len(deleted_doc_ids)} deleted documents")
+
+            for doc_id in deleted_doc_ids:
+                try:
+                    self.vector_store.delete_document(doc_id)
+                    logger.info(f"Removed deleted document from index: {doc_id}")
+                except Exception as e:
+                    logger.error(f"Failed to remove document {doc_id}: {str(e)}")
+
+            logger.info(f"Cleanup completed: {len(deleted_doc_ids)} documents removed from index")
+            return len(deleted_doc_ids)
+
+        except Exception as e:
+            logger.error(f"Cleanup deleted documents failed: {str(e)}")
+            return 0
 
     def _process_documents(self, documents):
         processed_count = 0

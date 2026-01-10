@@ -140,6 +140,9 @@ Please provide a clear and accurate answer based on the context above."""
             )
 
             answer = response.text
+            if not answer:
+                logger.warning("LLM returned empty response or response.text is None")
+                return "I apologize, but I was unable to generate a response at this time."
 
             logger.debug(f"Generated LLM response ({len(answer)} characters)")
             return answer

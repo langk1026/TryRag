@@ -46,18 +46,42 @@ class SharePointConnector:
 
     def _get_site_id(self):
         try:
-            site_path = self.site_url.replace('https://', '')
+            from urllib.parse import urlparse
             headers = {'Authorization': f'Bearer {self.access_token}'}
 
-            response = requests.get(
-                f'https://graph.microsoft.com/v1.0/sites/{site_path}',
-                headers=headers
-            )
+            logger.info(f"Resolving Site ID for URL: {self.site_url}")
+            
+            parsed = urlparse(self.site_url)
+            hostname = parsed.hostname
+            path = parsed.path.rstrip('/')
+
+            if not hostname:
+                # Fallback if no protocol provided or parsing failed
+                # Try simple cleaning assuming it starts with hostname
+                cleaned = self.site_url.replace('https://', '').replace('http://', '').strip('/')
+                if '/' in cleaned:
+                    parts = cleaned.split('/', 1)
+                    hostname = parts[0]
+                    path = '/' + parts[1]
+                else:
+                    hostname = cleaned
+                    path = ''
+            
+            if path and path != '/':
+                graph_url = f'https://graph.microsoft.com/v1.0/sites/{hostname}:{path}'
+            else:
+                graph_url = f'https://graph.microsoft.com/v1.0/sites/{hostname}'
+
+            logger.info(f"Graph API URL for Site ID: {graph_url}")
+
+            response = requests.get(graph_url, headers=headers)
             response.raise_for_status()
 
             data = response.json()
-            self.site_id = data['id'].split(',')[1]
-            logger.debug(f"Retrieved site ID")
+            # The id returned is normally "hostname,siteId,webId".
+            # using the full ID is robust for both site collections and subsites.
+            self.site_id = data['id']
+            logger.info(f"Retrieved site ID: {self.site_id}")
         except Exception as e:
             logger.error(f"Failed to get site ID: {str(e)}")
             raise
