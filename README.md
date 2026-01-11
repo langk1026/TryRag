@@ -1,4 +1,4 @@
-# RAG Document Assistant 
+# RAG Document Assistant
 
 A production-ready Retrieval-Augmented Generation (RAG) application for querying SharePoint documents with transparent, modular architecture.
 
