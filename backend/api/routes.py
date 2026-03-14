@@ -23,6 +23,9 @@ class QueryResponse(BaseModel):
     sources: list
     context_used: str
     num_sources: int
+    evaluation: dict = {}
+    retry_count: int = 0
+    queries_used: list = []
 
 
 class IndexResponse(BaseModel):

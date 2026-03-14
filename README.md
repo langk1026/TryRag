@@ -1,208 +1,217 @@
-# RAG Document Assistant  
+# TryRag
 
-A production-ready Retrieval-Augmented Generation (RAG) application for querying SharePoint documents with transparent, modular architecture.
+RAG system built on top of Microsoft SharePoint documents. Indexes content via the Graph API, stores embeddings in ChromaDB, and serves answers through a FastAPI backend with a React frontend.
 
-## Architecture Overview
+The retrieval pipeline runs as a LangGraph state graph: query expansion, hybrid vector + BM25 search, cross-encoder reranking, Gemini generation, and RAGAS faithfulness evaluation with an automatic retry loop.
 
-### Backend Components
+---
 
-- **FastAPI Server**: RESTful API with endpoints for querying and indexing
-- **SharePoint Connector**: Integrates with Microsoft SharePoint using Office365-REST-Python-Client
-- **Document Processor**: Extracts text from PDF, DOCX, XLSX, TXT, and MD files
-- **RAG Engine**: Orchestrates the complete RAG pipeline with full transparency
-- **Vector Store**: ChromaDB for persistent vector embeddings
-- **Embedding Service**: OpenAI embeddings with batching support
-- **Text Chunker**: Smart chunking with overlap and sentence boundary detection
-- **Index Scheduler**: Automated cron job for incremental indexing
-
-### Frontend Components
-
-- **React + Vite**: Modern, fast development experience
-- **Tailwind CSS**: Utility-first styling
-- **Search Interface**: Clean UI for asking questions
-- **Index Manager**: Control panel for manual indexing operations
-
-## Project Structure
+## Architecture
 
 ```
-rag-application/
-├── backend/
-│   ├── api/
-│   │   └── routes.py              # FastAPI endpoints
-│   ├── core/
-│   │   ├── config.py              # Configuration management
-│   │   ├── logger.py              # Logging setup
-│   │   ├── embeddings.py          # OpenAI embedding service
-│   │   ├── text_chunker.py        # Document chunking logic
-│   │   └── rag_engine.py          # Main RAG orchestration
-│   ├── services/
-│   │   ├── sharepoint_connector.py # SharePoint integration
-│   │   ├── document_processor.py   # Text extraction
-│   │   ├── vector_store.py         # ChromaDB interface
-│   │   └── indexing_service.py     # Document indexing
-│   ├── models/
-│   │   └── index_state.py          # Index state tracking
-│   └── main.py                     # FastAPI application
-├── frontend/
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── SearchInterface.jsx
-│   │   │   └── IndexManager.jsx
-│   │   ├── services/
-│   │   │   └── api.js
-│   │   ├── styles/
-│   │   │   └── index.css
-│   │   ├── App.jsx
-│   │   └── main.jsx
-│   ├── index.html
-│   ├── package.json
-│   └── vite.config.js
-├── scripts/
-│   └── index_scheduler.py          # Automated indexing cron
-├── .env.example
-└── requirements.txt
+SharePoint (Graph API)
+        |
+        v
+  IndexingService (APScheduler, 30-min incremental)
+        |
+        v
+  DocumentProcessor (PDF, DOCX, XLSX)
+  TextChunker + RecursiveSplitter
+        |
+        v
+  ChromaDB (embeddings via Google text-embedding-004)
+        |
+   [query time]
+        |
+        v
+  LangGraph pipeline
+        |
+    +---+---+---+---+---+---+
+    |                       |
+  query_node           evaluate_node
+  rewrite_node  -----> route_after_evaluation
+  retrieve_node           |           |
+  rerank_node          "end"       "retry"
+  generate_node                      |
+                               retry_node ---> rewrite_node
+        |
+        v
+  FastAPI /api/v1/query
+        |
+        v
+  React frontend
 ```
 
-## Setup Instructions
+**Observability:** OpenTelemetry traces exported to Jaeger via an OTEL Collector sidecar. Grafana available for dashboards.
 
-### Prerequisites
+---
 
-- Python 3.9+
-- Node.js 18+
-- SharePoint site with appropriate permissions
-- OpenAI API key
+## LangGraph Pipeline Nodes
 
-### Backend Setup
+| Node | What it does |
+|---|---|
+| `query_node` | Sanitises and initialises state |
+| `rewrite_node` | Generates multiple query variants (multi-query); optionally appends a HyDE hypothetical answer as an additional query |
+| `retrieve_node` | Runs each query variant through hybrid retrieval (vector + BM25), deduplicates by document ID, sorts by hybrid score |
+| `rerank_node` | Cross-encoder reranking via `BAAI/bge-reranker-v2-m3`; falls back to hybrid score if model unavailable |
+| `generate_node` | Builds context string, calls Gemini for answer generation |
+| `evaluate_node` | Faithfulness scoring via RAGAS or heuristic term-overlap fallback |
+| `retry_node` | Increments retry counter, widens `top_k` by 3, routes back to `rewrite_node` |
 
-1. Create and activate virtual environment:
+Retry fires when `faithfulness < threshold` and `retry_count < max_retries`. Configurable via `.env`.
+
+---
+
+## Retrieval: Hybrid Search
+
+Vector search and BM25 keyword search run independently against the same candidate pool. Scores are min-max normalised per retriever, then merged with configurable weights:
+
+```
+hybrid_score = (vector_weight * vector_norm) + (keyword_weight * keyword_norm)
+```
+
+Default: `vector_weight=0.6`, `keyword_weight=0.4`. Adjust via `.env`.
+
+---
+
+## Stack
+
+| Layer | Technology |
+|---|---|
+| Orchestration | LangGraph |
+| LLM | Google Gemini 2.0 Flash |
+| Embeddings | Google text-embedding-004 |
+| Vector store | ChromaDB |
+| Keyword search | BM25 (rank-bm25) |
+| Reranker | sentence-transformers CrossEncoder (BAAI/bge-reranker-v2-m3) |
+| Evaluation | RAGAS faithfulness + heuristic fallback |
+| Document source | Microsoft SharePoint (Graph API) |
+| API | FastAPI |
+| Frontend | React + Vite + Tailwind CSS |
+| Scheduler | APScheduler |
+| Tracing | OpenTelemetry → Jaeger |
+| Dashboards | Grafana |
+| Containers | Docker Compose (6 services) |
+
+---
+
+## Services
+
+| Service | Port | Purpose |
+|---|---|---|
+| backend | 8000 | FastAPI — query, indexing, health endpoints |
+| cron | — | APScheduler — incremental SharePoint indexing every 30 min |
+| otel-collector | 4317, 4318 | OTLP receiver, forwards traces to Jaeger |
+| jaeger | 16686 | Trace visualisation |
+| grafana | 3001 | Dashboards |
+| frontend | 3000 | React UI |
+
+---
+
+## API Routes
+
+| Route | Purpose |
+|---|---|
+| `POST /api/v1/query` | Run a RAG query — returns answer, sources, evaluation, retry count |
+| `POST /api/v1/index` | Trigger a full re-index from SharePoint |
+| `GET /api/v1/index/status` | Current index state (doc count, last indexed time) |
+| `GET /api/v1/health` | Service health |
+
+---
+
+## Quickstart
+
 ```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
+git clone https://github.com/langk1026/TryRag.git
+cd TryRag
 
-2. Install Python dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-3. Configure environment variables:
-```bash
 cp .env.example .env
-# Edit .env with your credentials
+# Required: GOOGLE_API_KEY, SHAREPOINT_* credentials
+# Optional: HYDE_ENABLED, MULTI_QUERY_ENABLED, RERANKER_ENABLED, RAGAS_ENABLED
+
+docker compose up -d --build
 ```
 
-4. Start the FastAPI server:
-```bash
-python backend/main.py
-```
+Frontend: `http://localhost:3000`
+API docs: `http://localhost:8000/docs`
+Jaeger UI: `http://localhost:16686`
+Grafana: `http://localhost:3001`
 
-The API will be available at `http://localhost:8000`
+---
 
-### Frontend Setup
+## Configuration
 
-1. Navigate to frontend directory:
-```bash
-cd frontend
-```
+All options are set via environment variables. Copy `.env.example` to `.env`.
 
-2. Install dependencies:
-```bash
-npm install
-```
+**Core**
 
-3. Start development server:
-```bash
-npm run dev
-```
+| Variable | Default | Description |
+|---|---|---|
+| `GOOGLE_API_KEY` | — | Required. Google AI Studio API key |
+| `LLM_MODEL` | `gemini-2.0-flash-exp` | Gemini model name |
+| `EMBEDDING_MODEL` | `models/text-embedding-004` | Embedding model |
+| `SHAREPOINT_SITE_URL` | — | Required. SharePoint site URL |
+| `SHAREPOINT_CLIENT_ID` | — | Required. Azure app client ID |
+| `SHAREPOINT_CLIENT_SECRET` | — | Required. Azure app client secret |
+| `SHAREPOINT_TENANT_ID` | — | Required. Azure tenant ID |
 
-The UI will be available at `http://localhost:3000`
+**Retrieval**
 
-### Automated Indexing
+| Variable | Default | Description |
+|---|---|---|
+| `HYBRID_SEARCH_ENABLED` | `true` | Enable vector + BM25 hybrid search |
+| `HYBRID_VECTOR_WEIGHT` | `0.6` | Weight for vector scores |
+| `HYBRID_KEYWORD_WEIGHT` | `0.4` | Weight for BM25 scores |
+| `HYDE_ENABLED` | `false` | Generate hypothetical answer before retrieval |
+| `MULTI_QUERY_ENABLED` | `false` | Generate multiple query variants |
 
-Start the index scheduler for automated incremental updates:
+**Reranking**
 
-```bash
-python scripts/index_scheduler.py
-```
+| Variable | Default | Description |
+|---|---|---|
+| `RERANKER_ENABLED` | `false` | Enable cross-encoder reranking |
+| `RERANKER_MODEL` | `BAAI/bge-reranker-v2-m3` | HuggingFace reranker model |
+| `RERANKER_TOP_N` | `5` | Documents to keep after reranking |
 
-This runs every 30 minutes (configurable in `.env`)
+**Evaluation**
 
-## API Endpoints
+| Variable | Default | Description |
+|---|---|---|
+| `RAGAS_ENABLED` | `false` | Enable RAGAS faithfulness scoring |
+| `FAITHFULNESS_THRESHOLD` | `0.75` | Minimum score to pass without retry |
+| `MAX_RETRIES` | `2` | Max retry attempts per query |
 
-### Query Endpoint
-```
-POST /api/v1/query
-Body: {
-  "question": "Your question here",
-  "top_k": 5,
-  "temperature": 0.7
-}
-```
+---
 
-### Indexing Endpoints
-```
-POST /api/v1/index/full          # Full reindex
-POST /api/v1/index/incremental   # Incremental index
-GET  /api/v1/index/stats         # Index statistics
-```
+## Document Support
 
-### Health Check
-```
-GET /api/v1/health
-```
+- PDF (PyPDF2)
+- DOCX (python-docx)
+- XLSX (openpyxl)
 
-## RAG Pipeline Flow
+Files are split with a recursive character splitter. Default chunk size: 1000 tokens, overlap: 200.
 
-1. **User Query** → Received by FastAPI endpoint
-2. **Query Embedding** → Generate embedding using OpenAI
-3. **Vector Search** → Retrieve top-k similar chunks from ChromaDB
-4. **Context Building** → Construct context from retrieved documents
-5. **LLM Generation** → OpenAI generates answer based on context
-6. **Response** → Return answer with source citations
+---
 
-## Indexing Pipeline Flow
+## Observability
 
-1. **Document Fetch** → Retrieve documents from SharePoint
-2. **Text Extraction** → Extract text based on file type
-3. **Chunking** → Split text into overlapping chunks
-4. **Embedding** → Generate embeddings for chunks
-5. **Storage** → Store in ChromaDB with metadata
-6. **State Update** → Track last indexed time
+OpenTelemetry spans cover every LangGraph node. Set `TELEMETRY_ENABLED=true` and ensure the `otel-collector` service is running. Traces appear in Jaeger at `http://localhost:16686`.
 
-## Configuration Options
+---
 
-Key environment variables:
+## Known Limitations
 
-- `SHAREPOINT_SITE_URL`: Your SharePoint site URL
-- `SHAREPOINT_CLIENT_ID`: Azure AD app client ID
-- `SHAREPOINT_CLIENT_SECRET`: Azure AD app client secret
-- `OPENAI_API_KEY`: OpenAI API key
-- `EMBEDDING_MODEL`: Embedding model (default: text-embedding-3-small)
-- `LLM_MODEL`: LLM model (default: gpt-4-turbo-preview)
-- `CHUNK_SIZE`: Text chunk size in characters (default: 1000)
-- `CHUNK_OVERLAP`: Chunk overlap in characters (default: 200)
-- `INDEX_SCHEDULE_MINUTES`: Indexing frequency (default: 30)
+- ChromaDB is file-based and stored in a Docker volume — not suitable for multi-replica deployments without a remote ChromaDB server
+- SharePoint authentication uses client credentials (app-only). Delegated auth not supported.
+- RAGAS evaluation adds latency per query; disable with `RAGAS_ENABLED=false` for lower-latency use cases
+- Reranker model downloads on first startup (~500MB); ensure network access from the container
 
-## Code Style Guidelines
+---
 
-This project follows strict code style conventions:
+## Roadmap
 
-- **No Type Hints**: Python code uses no type annotations
-- **Self-Documenting**: Variable and function names are descriptive
-- **Minimal Comments**: Comments only for complex logic
-- **Clean Architecture**: Clear separation of concerns
-- **Transparency**: Every step is logged for traceability
-
-## Transparency Features
-
-All pipeline steps are logged with:
-- Timestamp
-- Operation details
-- Success/failure status
-- Performance metrics
-
-Logs are written to both console and file for analysis.
-
-## License
-
-MIT License
+- [ ] GitLab Enterprise connector (document source)
+- [ ] Freshdesk connector (document source)
+- [ ] Remote ChromaDB support for horizontal scaling
+- [ ] Streaming response via Server-Sent Events
+- [ ] User feedback loop for continuous retrieval improvement

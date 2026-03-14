@@ -33,6 +33,26 @@ class Config:
         self.hyde_temperature = float(os.getenv('HYDE_TEMPERATURE', '0.7'))
         self.hyde_max_tokens = int(os.getenv('HYDE_MAX_TOKENS', '300'))
 
+        self.multi_query_enabled = os.getenv('MULTI_QUERY_ENABLED', 'true').lower() == 'true'
+        self.multi_query_count = int(os.getenv('MULTI_QUERY_COUNT', '3'))
+        self.hybrid_search_enabled = os.getenv('HYBRID_SEARCH_ENABLED', 'true').lower() == 'true'
+        self.hybrid_vector_weight = float(os.getenv('HYBRID_VECTOR_WEIGHT', '0.6'))
+        self.hybrid_keyword_weight = float(os.getenv('HYBRID_KEYWORD_WEIGHT', '0.4'))
+        self.hybrid_candidate_pool = int(os.getenv('HYBRID_CANDIDATE_POOL', '20'))
+
+        self.reranker_enabled = os.getenv('RERANKER_ENABLED', 'true').lower() == 'true'
+        self.reranker_model = os.getenv('RERANKER_MODEL', 'BAAI/bge-reranker-v2-m3')
+        self.reranker_top_n = int(os.getenv('RERANKER_TOP_N', '5'))
+
+        self.ragas_enabled = os.getenv('RAGAS_ENABLED', 'true').lower() == 'true'
+        self.faithfulness_threshold = float(os.getenv('FAITHFULNESS_THRESHOLD', '0.75'))
+        self.max_retries = int(os.getenv('MAX_RETRIES', '2'))
+
+        self.telemetry_enabled = os.getenv('TELEMETRY_ENABLED', 'true').lower() == 'true'
+        self.telemetry_service_name = os.getenv('TELEMETRY_SERVICE_NAME', 'tryrag-backend')
+        self.telemetry_otlp_endpoint = os.getenv('TELEMETRY_OTLP_ENDPOINT', 'http://otel-collector:4317')
+        self.telemetry_console_export = os.getenv('TELEMETRY_CONSOLE_EXPORT', 'false').lower() == 'true'
+
         self._ensure_directories()
 
     def _ensure_directories(self):

@@ -154,3 +154,26 @@ class VectorStore:
         except Exception as e:
             logger.error(f"Failed to clear collection: {str(e)}")
             raise
+
+    def get_all_chunks(self):
+        try:
+            results = self.collection.get(include=['documents', 'metadatas'])
+
+            ids = results.get('ids') or []
+            documents = results.get('documents') or []
+            metadatas = results.get('metadatas') or []
+            count = len(ids)
+
+            all_chunks = []
+            for i in range(count):
+                all_chunks.append({
+                    'id': ids[i],
+                    'text': documents[i] if i < len(documents) else "",
+                    'metadata': metadatas[i] if i < len(metadatas) else {}
+                })
+
+            logger.debug(f"Loaded {len(all_chunks)} chunks from vector store")
+            return all_chunks
+        except Exception as e:
+            logger.error(f"Failed to load all chunks: {str(e)}")
+            return []

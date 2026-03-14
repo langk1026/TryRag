@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.api.routes import router
 from backend.core.config import config
 from backend.core.logger import setup_logger
+from backend.monitoring.telemetry import configure_telemetry
 
 logger = setup_logger(__name__)
 
@@ -13,6 +14,16 @@ async def lifespan(app: FastAPI):
     logger.info("RAG Application API starting up")
     logger.info(f"Vector DB path: {config.vector_db_path}")
     logger.info(f"Collection name: {config.collection_name}")
+
+    tracer = configure_telemetry()
+    if tracer:
+        try:
+            from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+            FastAPIInstrumentor.instrument_app(app)
+            logger.info("FastAPI OpenTelemetry instrumentation enabled")
+        except Exception as e:
+            logger.warning(f"FastAPI instrumentation failed: {str(e)}")
+
     yield
     logger.info("RAG Application API shutting down")
 
