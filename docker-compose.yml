@@ -9,20 +9,14 @@ services:
       - "8000:8000"
     env_file:
       - .env
-    environment:
-      - VECTOR_DB_PATH=/app/data/chromadb
-      - API_HOST=0.0.0.0
-      - API_PORT=8000
-      - CORS_ORIGINS=http://localhost:3000,http://localhost
-      - LOG_FILE=/app/logs/app.log
-      - TELEMETRY_ENABLED=true
-      - TELEMETRY_SERVICE_NAME=tryrag-backend
-      - TELEMETRY_OTLP_ENDPOINT=http://otel-collector:4317
     volumes:
       - vector-data:/app/data
       - backend-logs:/app/logs
+      - ./data/local_documents:/tmp/tryrag_documents
     networks:
       - rag-network
+    depends_on:
+      - otel-collector
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/api/v1/health')"]
@@ -37,12 +31,10 @@ services:
     container_name: rag-cron
     env_file:
       - .env
-    environment:
-      - VECTOR_DB_PATH=/app/data/chromadb
-      - LOG_FILE=/app/logs/cron.log
     volumes:
       - vector-data:/app/data
       - cron-logs:/app/logs
+      - ./data/local_documents:/tmp/tryrag_documents
     networks:
       - rag-network
     depends_on:

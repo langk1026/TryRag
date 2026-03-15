@@ -1,10 +1,12 @@
 from datetime import datetime, timezone
 from backend.services.sharepoint_connector import SharePointConnector
+from backend.services.local_document_connector import LocalDocumentConnector
 from backend.services.document_processor import DocumentProcessor
 from backend.services.vector_store import VectorStore
 from backend.core.recursive_splitter import RecursiveCharacterSplitter
 from backend.core.embeddings import EmbeddingService
 from backend.core.logger import setup_logger
+from backend.core.config import config
 from backend.models.index_state import IndexState
 
 logger = setup_logger(__name__)
@@ -12,7 +14,13 @@ logger = setup_logger(__name__)
 
 class IndexingService:
     def __init__(self):
-        self.sharepoint = SharePointConnector()
+        if config.environment == 'production':
+            self.document_source = SharePointConnector()
+            logger.info("Indexing source set to SharePoint (production environment)")
+        else:
+            self.document_source = LocalDocumentConnector()
+            logger.info("Indexing source set to local temp folder (development environment)")
+
         self.doc_processor = DocumentProcessor()
         self.vector_store = VectorStore()
         self.chunker = RecursiveCharacterSplitter()
@@ -20,13 +28,13 @@ class IndexingService:
         self.index_state = IndexState()
 
     def full_reindex(self):
-        logger.info("Starting full reindex of all SharePoint documents")
+        logger.info("Starting full reindex of all source documents")
 
         try:
-            documents = self.sharepoint.get_all_documents()
+            documents = self.document_source.get_all_documents()
 
             if not documents:
-                logger.warning("No documents found in SharePoint")
+                logger.warning("No documents found in configured source")
                 return {
                     'status': 'completed',
                     'documents_processed': 0,
@@ -64,7 +72,7 @@ class IndexingService:
             deleted_count = self._cleanup_deleted_documents()
 
             logger.info(f"Fetching documents modified since {last_indexed}")
-            modified_docs = self.sharepoint.get_documents_modified_since(last_indexed)
+            modified_docs = self.document_source.get_documents_modified_since(last_indexed)
 
             if not modified_docs:
                 logger.info("No modified documents found")
@@ -97,9 +105,9 @@ class IndexingService:
 
     def _cleanup_deleted_documents(self):
         try:
-            logger.info("Checking for deleted documents in SharePoint")
+            logger.info("Checking for deleted documents in configured source")
 
-            current_docs = self.sharepoint.get_all_documents()
+            current_docs = self.document_source.get_all_documents()
             current_doc_ids = {doc['id'] for doc in current_docs}
 
             indexed_doc_ids = set(self.vector_store.get_all_document_ids())
@@ -135,7 +143,7 @@ class IndexingService:
             try:
                 logger.info(f"Processing document: {doc['name']}")
 
-                content = self.sharepoint.download_file_content(doc['path'])
+                content = self.document_source.download_file_content(doc['path'])
 
                 pages_data = self.doc_processor.extract_text_with_pages(content, doc['name'])
 
@@ -149,7 +157,7 @@ class IndexingService:
                     'document_path': doc['path'],
                     'modified': doc['modified'],
                     'author': doc['author'],
-                    'url': f"{self.sharepoint.site_url}{doc['path']}"
+                    'url': doc.get('web_url', '')
                 }
 
                 chunks = self.chunker.chunk_text_with_pages(pages_data, metadata)

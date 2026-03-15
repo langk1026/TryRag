@@ -4,14 +4,20 @@ from pathlib import Path
 
 class Config:
     def __init__(self):
+        raw_environment = os.getenv('ENVIRONMENT', 'development').strip().lower()
+        if raw_environment not in ('development', 'production'):
+            raw_environment = 'development'
+        self.environment = raw_environment
+
         self.sharepoint_site_url = os.getenv('SHAREPOINT_SITE_URL', '')
         self.sharepoint_client_id = os.getenv('SHAREPOINT_CLIENT_ID', '')
         self.sharepoint_client_secret = os.getenv('SHAREPOINT_CLIENT_SECRET', '')
         self.sharepoint_tenant_id = os.getenv('SHAREPOINT_TENANT_ID', '')
         self.sharepoint_document_library = os.getenv('SHAREPOINT_DOCUMENT_LIBRARY', 'Shared Documents')
+        self.local_documents_path = os.getenv('LOCAL_DOCUMENTS_PATH', '/tmp/tryrag_documents')
 
         self.google_api_key = os.getenv('GOOGLE_API_KEY', '')
-        self.embedding_model = os.getenv('EMBEDDING_MODEL', 'models/text-embedding-004')
+        self.embedding_model = os.getenv('EMBEDDING_MODEL', 'gemini-embedding-2-preview')
         self.llm_model = os.getenv('LLM_MODEL', 'gemini-2.0-flash-exp')
 
         self.vector_db_path = os.getenv('VECTOR_DB_PATH', './data/chromadb')
@@ -24,6 +30,7 @@ class Config:
 
         self.api_host = os.getenv('API_HOST', '0.0.0.0')
         self.api_port = int(os.getenv('API_PORT', '8000'))
+        self.api_reload = os.getenv('API_RELOAD', 'false').lower() == 'true'
         self.cors_origins = os.getenv('CORS_ORIGINS', 'http://localhost:3000').split(',')
 
         self.log_level = os.getenv('LOG_LEVEL', 'INFO')
@@ -58,6 +65,8 @@ class Config:
     def _ensure_directories(self):
         Path(self.vector_db_path).mkdir(parents=True, exist_ok=True)
         Path(self.log_file).parent.mkdir(parents=True, exist_ok=True)
+        if self.environment == 'development':
+            Path(self.local_documents_path).mkdir(parents=True, exist_ok=True)
 
 
 config = Config()

@@ -13,12 +13,21 @@ def configure_telemetry():
         logger.info("Telemetry disabled by configuration")
         return None
 
+    if _tracer is not None:
+        return _tracer
+
     try:
         from opentelemetry import trace
         from opentelemetry.sdk.resources import Resource
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
         from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+
+        current_provider = trace.get_tracer_provider()
+        if isinstance(current_provider, TracerProvider):
+            _tracer = trace.get_tracer(config.telemetry_service_name)
+            logger.debug("Telemetry provider already configured; reusing existing tracer")
+            return _tracer
 
         resource = Resource.create({"service.name": config.telemetry_service_name})
         provider = TracerProvider(resource=resource)
