@@ -189,8 +189,38 @@ class IndexingService:
         }
 
     def get_index_stats(self):
+        last_indexed = self.index_state.get_last_indexed_time()
         return {
             'total_chunks': self.vector_store.get_document_count(),
-            'last_indexed': self.index_state.get_last_indexed_time(),
+            'last_indexed': last_indexed.isoformat() if last_indexed else None,
             'collection_name': self.vector_store.collection_name
         }
+
+    def get_indexed_documents(self):
+        try:
+            chunks = self.vector_store.get_all_chunks()
+            documents = {}
+            for chunk in chunks:
+                metadata = chunk.get('metadata', {})
+                doc_id = metadata.get('document_id')
+                if doc_id and doc_id not in documents:
+                    documents[doc_id] = {
+                        'id': doc_id,
+                        'name': metadata.get('document_name', 'Unknown'),
+                        'path': metadata.get('document_path', ''),
+                        'chunks_count': 0
+                    }
+                if doc_id:
+                    documents[doc_id]['chunks_count'] += 1
+            return list(documents.values())
+        except Exception as e:
+            logger.error(f"Failed to get indexed documents: {str(e)}")
+            raise
+
+    def delete_document(self, document_id: str):
+        try:
+            self.vector_store.delete_document(document_id)
+            logger.info(f"Deleted document {document_id} via API")
+        except Exception as e:
+            logger.error(f"Failed to delete document: {str(e)}")
+            raise

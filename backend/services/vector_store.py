@@ -14,15 +14,13 @@ class VectorStore:
             settings=Settings(anonymized_telemetry=False)
         )
         self.collection_name = config.collection_name
-        self.collection = self._get_or_create_collection()
 
-    def _get_or_create_collection(self):
+    def _get_collection(self):
         try:
             collection = self.client.get_or_create_collection(
                 name=self.collection_name,
                 metadata={"description": "SharePoint documents embeddings"}
             )
-            logger.info(f"Connected to collection: {self.collection_name}")
             return collection
         except Exception as e:
             logger.error(f"Failed to get/create collection: {str(e)}")
@@ -37,8 +35,13 @@ class VectorStore:
             raise ValueError("Number of chunks must match number of embeddings")
 
         try:
-            ids = [f"{chunk['metadata']['document_id']}_{chunk['metadata']['chunk_index']}"
-                   for chunk in chunks]
+            ids = []
+            for position, chunk in enumerate(chunks):
+                metadata = chunk['metadata']
+                document_id = metadata['document_id']
+                page_number = metadata.get('page_number', 'na')
+                chunk_index = metadata.get('chunk_index', position)
+                ids.append(f"{document_id}_p{page_number}_c{chunk_index}_{position}")
 
             texts = [chunk['text'] for chunk in chunks]
 
@@ -57,7 +60,7 @@ class VectorStore:
                     
                 metadatas.append(metadata)
 
-            self.collection.add(
+            self._get_collection().add(
                 ids=ids,
                 embeddings=embeddings,
                 documents=texts,
@@ -74,7 +77,7 @@ class VectorStore:
         try:
             logger.debug(f"Searching for top {top_k} similar documents")
 
-            results = self.collection.query(
+            results = self._get_collection().query(
                 query_embeddings=[query_embedding],
                 n_results=top_k,
                 where=filter_metadata
@@ -111,7 +114,7 @@ class VectorStore:
 
     def delete_document(self, document_id):
         try:
-            self.collection.delete(
+            self._get_collection().delete(
                 where={"document_id": document_id}
             )
             logger.info(f"Deleted document {document_id} from vector store")
@@ -121,7 +124,7 @@ class VectorStore:
 
     def get_document_count(self):
         try:
-            count = self.collection.count()
+            count = self._get_collection().count()
             logger.debug(f"Vector store contains {count} chunks")
             return count
         except Exception as e:
@@ -130,7 +133,7 @@ class VectorStore:
 
     def get_all_document_ids(self):
         try:
-            results = self.collection.get(
+            results = self._get_collection().get(
                 include=['metadatas']
             )
 
@@ -149,7 +152,7 @@ class VectorStore:
     def clear_collection(self):
         try:
             self.client.delete_collection(self.collection_name)
-            self.collection = self._get_or_create_collection()
+            self._get_collection()  # Recreate immediately
             logger.warning("Cleared all documents from vector store")
         except Exception as e:
             logger.error(f"Failed to clear collection: {str(e)}")
@@ -157,7 +160,7 @@ class VectorStore:
 
     def get_all_chunks(self):
         try:
-            results = self.collection.get(include=['documents', 'metadatas'])
+            results = self._get_collection().get(include=['documents', 'metadatas'])
 
             ids = results.get('ids') or []
             documents = results.get('documents') or []

@@ -60,6 +60,14 @@ class Config:
         self.telemetry_otlp_endpoint = os.getenv('TELEMETRY_OTLP_ENDPOINT', 'http://otel-collector:4317')
         self.telemetry_console_export = os.getenv('TELEMETRY_CONSOLE_EXPORT', 'false').lower() == 'true'
 
+        self.cache_ttl_seconds = int(os.getenv('CACHE_TTL_SECONDS', '300'))
+        self.cache_max_size = int(os.getenv('CACHE_MAX_SIZE', '100'))
+
+        self.langfuse_enabled = os.getenv('LANGFUSE_ENABLED', 'false').lower() == 'true'
+        self.langfuse_public_key = os.getenv('LANGFUSE_PUBLIC_KEY', '')
+        self.langfuse_secret_key = os.getenv('LANGFUSE_SECRET_KEY', '')
+        self.langfuse_host = os.getenv('LANGFUSE_HOST', 'https://cloud.langfuse.com')
+
         self._ensure_directories()
 
     def _ensure_directories(self):

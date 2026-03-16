@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Search, Database } from 'lucide-react';
+import { Search, Database, Activity } from 'lucide-react';
 import SearchInterface from './components/SearchInterface';
 import IndexManager from './components/IndexManager';
+import ObservabilityView from './components/ObservabilityView';
 
 function App() {
   const [activeTab, setActiveTab] = useState('search');
@@ -46,13 +47,31 @@ function App() {
               <Database className="w-5 h-5" />
               Index Management
             </button>
+            <button
+              onClick={() => setActiveTab('observability')}
+              className={`flex items-center gap-2 px-6 py-3 font-medium transition-colors border-b-2 ${
+                activeTab === 'observability'
+                  ? 'text-primary-600 border-primary-600'
+                  : 'text-gray-600 border-transparent hover:text-gray-900'
+              }`}
+            >
+              <Activity className="w-5 h-5" />
+              Observability
+            </button>
           </div>
         </div>
       </nav>
 
       <main className="max-w-7xl mx-auto px-6 py-8">
-        {activeTab === 'search' && <SearchInterface />}
-        {activeTab === 'index' && <IndexManager />}
+        <div style={{ display: activeTab === 'search' ? 'block' : 'none' }}>
+          <SearchInterface />
+        </div>
+        <div style={{ display: activeTab === 'index' ? 'block' : 'none' }}>
+          <IndexManager />
+        </div>
+        <div style={{ display: activeTab === 'observability' ? 'block' : 'none' }}>
+          <ObservabilityView />
+        </div>
       </main>
 
       <footer className="mt-16 bg-white border-t border-gray-200">

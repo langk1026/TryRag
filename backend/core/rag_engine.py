@@ -18,3 +18,29 @@ class RAGEngine:
         except Exception as e:
             logger.error(f"RAG query failed: {str(e)}")
             raise
+
+    def get_graph_mermaid(self):
+        try:
+            import re
+            raw_mermaid = self.pipeline.graph.get_graph().draw_mermaid()
+
+            # 1. Strip <p> tags
+            clean = re.sub(r'<p>(.*?)</p>', r'\1', raw_mermaid)
+            # 2. Remove &nbsp; entities
+            clean = clean.replace('&nbsp;', ' ')
+            # 3. Convert dotted-edge-with-label: "-. label .->" to "-.->|label|"
+            clean = re.sub(
+                r'-\.\s*(.+?)\s*\.\-\>',
+                lambda m: f'-.->|{m.group(1).strip()}|',
+                clean
+            )
+            # 4. Convert solid-edge-with-label: "-- label -->" to "-->|label|"
+            clean = re.sub(
+                r'--\s+(.+?)\s+--\>',
+                lambda m: f'-->|{m.group(1).strip()}|',
+                clean
+            )
+            return clean
+        except Exception as e:
+            logger.error(f"Failed to generate graph mermaid: {str(e)}")
+            return ""

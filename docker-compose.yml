@@ -4,12 +4,17 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.backend
+    image: rag-backend:latest
     container_name: rag-backend
     ports:
       - "8000:8000"
+    environment:
+      - API_RELOAD=true
     env_file:
       - .env
     volumes:
+      - ./backend:/app/backend
+      - ./scripts:/app/scripts
       - vector-data:/app/data
       - backend-logs:/app/logs
       - ./data/local_documents:/tmp/tryrag_documents
@@ -23,24 +28,6 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-
-  cron:
-    build:
-      context: .
-      dockerfile: Dockerfile.cron
-    container_name: rag-cron
-    env_file:
-      - .env
-    volumes:
-      - vector-data:/app/data
-      - cron-logs:/app/logs
-      - ./data/local_documents:/tmp/tryrag_documents
-    networks:
-      - rag-network
-    depends_on:
-      - backend
-      - otel-collector
-    restart: unless-stopped
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.114.0
@@ -61,10 +48,13 @@ services:
   jaeger:
     image: jaegertracing/all-in-one:1.62.0
     container_name: tryrag-jaeger
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
     ports:
       - "16686:16686"
       - "14250:14250"
       - "14268:14268"
+      - "4319:4317"
     networks:
       - rag-network
     restart: unless-stopped
@@ -76,6 +66,7 @@ services:
       - "3001:3000"
     volumes:
       - grafana-data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning
     networks:
       - rag-network
     depends_on:
@@ -83,12 +74,14 @@ services:
     restart: unless-stopped
 
   frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
+    image: node:18-alpine
     container_name: rag-frontend
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    volumes:
+      - ./frontend:/app
     ports:
-      - "3000:80"
+      - "3000:3000"
     networks:
       - rag-network
     depends_on:

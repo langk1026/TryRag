@@ -6,8 +6,20 @@ from backend.core.config import config
 from backend.core.logger import setup_logger
 from backend.monitoring.telemetry import configure_telemetry
 
+from apscheduler.schedulers.background import BackgroundScheduler
+from backend.services.indexing_service import IndexingService
+from datetime import datetime
+
 logger = setup_logger(__name__)
 
+def run_scheduled_index():
+    logger.info("Running scheduled incremental index...")
+    try:
+        service = IndexingService()
+        result = service.incremental_index()
+        logger.info(f"Scheduled index complete: {result['documents_processed']} docs.")
+    except Exception as e:
+        logger.error(f"Scheduled index failed: {str(e)}")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -15,8 +27,20 @@ async def lifespan(app: FastAPI):
     logger.info(f"Vector DB path: {config.vector_db_path}")
     logger.info(f"Collection name: {config.collection_name}")
 
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(
+        run_scheduled_index,
+        'interval',
+        minutes=config.index_schedule_minutes,
+        id='incremental_index',
+        next_run_time=datetime.now(),
+        replace_existing=True
+    )
+    scheduler.start()
+
     yield
     logger.info("RAG Application API shutting down")
+    scheduler.shutdown()
 
 
 app = FastAPI(

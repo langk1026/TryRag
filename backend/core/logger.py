@@ -21,4 +21,8 @@ def setup_logger(name):
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
 
+        temp_handler = logging.FileHandler("/app/backend/temp.log")
+        temp_handler.setFormatter(formatter)
+        logger.addHandler(temp_handler)
+
     return logger

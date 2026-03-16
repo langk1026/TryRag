@@ -8,8 +8,15 @@ logger = setup_logger(__name__)
 class EmbeddingService:
     def __init__(self):
         genai.configure(api_key=config.google_api_key)
-        self.model = config.embedding_model
+        self.model = self._normalize_model_name(config.embedding_model)
         self.batch_size = config.batch_size
+
+    def _normalize_model_name(self, model_name):
+        if model_name.startswith('models/') or model_name.startswith('tunedModels/'):
+            return model_name
+        normalized = f"models/{model_name}"
+        logger.info(f"Normalized embedding model name to: {normalized}")
+        return normalized
 
     def generate_embeddings(self, texts):
         if not texts:
